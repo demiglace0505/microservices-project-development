@@ -10,6 +10,13 @@
       - [Creating the Repository](#creating-the-repository)
       - [Configure the Data Source](#configure-the-data-source)
       - [Testing](#testing)
+  - [Creating Presentation Layer](#creating-presentation-layer)
+      - [Creating the Model Class](#creating-the-model-class-1)
+      - [Creating the Repository](#creating-the-repository-1)
+      - [Configure the Data Source](#configure-the-data-source-1)
+      - [Create the Services Layer](#create-the-services-layer)
+      - [Create the Controller](#create-the-controller)
+      - [Flow](#flow)
 
 ## Java Project Development Concepts
 
@@ -135,3 +142,147 @@ class StudentdalApplicationTests {
 	}
 }
 ```
+
+## Creating Presentation Layer
+
+In this section, we created a frontend using Thymeleaf that allows the user to save locations to a database. The createLocation page will allow the end user to enter a unique id for the location, a location code, name of the location, and the city type into a form. This form will be converted into a Java object and persisted into the database using Hibernate. The response will then be returned to the new page displayLocations.
+
+The schema of the locations table is:
+
+```sql
+use projectdb;
+create table location (
+  id int PRIMARY KEY,
+  code varchar(20),
+  name varchar(20),
+  type varchar(10));
+```
+
+The Spring Boot project will be using Spring Data JPA, MySQL Driver, Spring Web, and Thymeleaf as the dependencies.
+
+#### Creating the Model Class
+
+We create the fields for the model class according to the database table columns. Since the field names are the same as the column names, we don't need to use the @Column annotation anymore
+
+```java
+@Entity
+public class Location {
+	@Id
+	private int id;
+	private String code;
+	private String name;
+	private String type;
+}
+```
+
+#### Creating the Repository
+
+We then proceed with the data access layer of our module. With Spring Data, we don't need to create a DAO interface or its implementation anymore. We just need to create an interface that extends JpaRepository. We use JpaRepository instead of CRUDRepository since CRUDRepository returns an Iterable with its **findAll()** method. With JpaRepository, it returns a list instead.
+
+```java
+public interface LocationRepository extends JpaRepository<Location, Integer> {
+
+}
+```
+
+#### Configure the Data Source
+
+Using the application.properties, we can configure the data source.
+
+```
+spring.datasource.url=jdbc:mysql://localhost:3306/projectdb
+spring.datasource.username=root
+spring.datasource.password=1234
+
+spring.jpa.show-sql=true
+spring.servlet.context-path=/locationweb
+```
+
+#### Create the Services Layer
+
+In the Service Layer, we created a Location Service interface and its implementation. This will use the services provided by the data access Layer.
+
+```java
+public interface LocationService {
+	Location saveLocation(Location location);
+	Location updateLocation(Location location);
+	void deleteLocation(Location location);
+	Location getLocationById(int id);
+	List<Location> getAllLocations();
+}
+```
+
+The implementation class is marked with the annotation **@Service** which allows Spring to create an instance of this service at runtime and do the dependency injection in other classes as required. To access the location repository, we need to autowire it using **@Autowired**.
+
+```java
+@Service
+public class LocationServiceImpl implements LocationService {
+
+	@Autowired
+	private LocationRepository repository;
+
+	@Override
+	public Location saveLocation(Location location) {
+		return repository.save(location);
+	}
+
+	@Override
+	public Location updateLocation(Location location) {
+		return repository.save(location);
+	}
+
+	@Override
+	public void deleteLocation(Location location) {
+		repository.delete(location);
+	}
+
+	@Override
+	public Location getLocationById(int id) {
+		return repository.findById(id).get();
+	}
+
+	@Override
+	public List<Location> getAllLocations() {
+		return repository.findAll();
+	}
+}
+```
+
+#### Create the Controller
+
+In a Spring MVC application, the users cannot access the views directly. Everything has to go through a controller first. We create the controller class that we annotate with **@Controller**, and create methods that returns strings which is a page to which a user should be directed to. These methods are annotated with **@RequestMapping**.
+
+To make the Spring Container convert the form fields into an object and retrieve it to our controller, we use **@ModelAttribute**. We tell Spring to create a model object, set the fields from the request and expose it out as a bean with the class Location (location). To send back the response message, we use **ModelMap** which we can access in the template using _msg_
+
+```java
+@Controller
+public class LocationController {
+
+	@Autowired
+	public LocationService service;
+
+	@RequestMapping("/showCreate")
+	public String showCreate() {
+		return "createLocation";
+	}
+
+	@RequestMapping("/saveLoc")
+	public String saveLocation(@ModelAttribute("location") Location location, ModelMap modelMap) {
+		Location locationSaved = service.saveLocation(location);
+		String msg = "Location saved with id: " + locationSaved.getId();
+		modelMap.addAttribute("msg", msg);
+		return "createLocation";
+	}
+}
+```
+
+#### Flow
+
+The flow of creating a location is as follows:
+
+1. Form is submitted
+2. Spring Container converts form parameters into a model object and hands it to the controller method (saveLocation)
+3. The controller method invokes the service
+4. The service implementation uses the LocationRepository
+5. Spring uses Hibernate internally to convert the model object into a database record
+6. We get the location object back as a response through the controller
