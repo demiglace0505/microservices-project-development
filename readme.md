@@ -19,6 +19,8 @@
       - [Flow](#flow)
   - [Utility Layer](#utility-layer)
       - [Email Use Case](#email-use-case)
+      - [Reports Use Case](#reports-use-case)
+      - [Creating the Controller](#creating-the-controller)
 
 ## Java Project Development Concepts
 
@@ -360,5 +362,77 @@ public class LocationController {
 		// send email
 		emailUtil.sendEmail("springxyzabc@gmail.com", "Location Saved", "Location Saved successfully");
 		return "createLocation";
+	}
+```
+
+#### Reports Use Case
+
+For reporting, we can use the open source third party API [JFreeChart](https://www.jfree.org/jfreechart/). In our LocationRepository, we will add a new method for loading a dataset from which the report can be generated. This dataset will then be used by our ReportUtil into the JFree API. To convert this object into an image, we will use the ChartUtilities class from JFree. We need to add the following maven dependency.
+
+```xml
+<!-- https://mvnrepository.com/artifact/org.jfree/jfreechart -->
+<dependency>
+    <groupId>org.jfree</groupId>
+    <artifactId>jfreechart</artifactId>
+    <version>1.0.19</version>
+</dependency>
+```
+
+We can now create a method in our LocationRepository for finding the count of location types (urban vs rural).
+
+```java
+public interface LocationRepository extends JpaRepository<Location, Integer> {
+	@Query(value="SELECT type, COUNT(*) FROM vendor GROUP BY type", nativeQuery=true)
+	public List<Object[]> findTypeAndTypeCount();
+}
+```
+
+We then proceed on creating the ReportUtil interface and its implementation that will use this data and generate a report for us.
+
+```java
+@Component
+public class ReportUtilImpl implements ReportUtil {
+
+	@Override
+	public void generatePieChart(String path, List<Object[]> data) {
+		// copy the data into the pie data set
+		DefaultPieDataset dataset = new DefaultPieDataset();
+		for (Object[] objects: data) {
+			// key, value
+			dataset.setValue(objects[0].toString(), new Double(objects[1].toString()));
+		}
+		// create chart object
+		JFreeChart chart = ChartFactory.createPieChart3D("Location Report", dataset);
+
+		// convert to image
+		try {
+			ChartUtilities.saveChartAsJPEG(new File(path+"/pieChart.jpeg"), chart, 300, 300);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+}
+```
+
+#### Creating the Controller
+
+In our LocationController, we add a view for the report endpoint.
+
+```java
+  @Autowired
+	LocationRepository repository;
+
+	@Autowired
+	ReportUtil reportUtil;
+
+	@Autowired
+	ServletContext sc;
+
+	@RequestMapping("/generateReport")
+	public String generateReport() {
+		String path = sc.getRealPath("/");
+		List<Object[]> data = repository.findTypeAndTypeCount();
+		reportUtil.generatePieChart(null, data);
+		return "report";
 	}
 ```
