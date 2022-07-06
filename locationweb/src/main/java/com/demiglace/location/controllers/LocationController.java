@@ -2,6 +2,8 @@ package com.demiglace.location.controllers;
 
 import java.util.List;
 
+import javax.servlet.ServletContext;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
@@ -10,14 +12,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import com.demiglace.location.entities.Location;
+import com.demiglace.location.repos.LocationRepository;
 import com.demiglace.location.service.LocationService;
 import com.demiglace.location.util.EmailUtil;
+import com.demiglace.location.util.ReportUtil;
 
 @Controller
 public class LocationController {
 	
 	@Autowired
 	LocationService service;
+	
+	@Autowired
+	LocationRepository repository;
+	
+	@Autowired
+	ReportUtil reportUtil;
+	
+	@Autowired
+	ServletContext sc;
 	
 	@Autowired
 	EmailUtil emailUtil;
@@ -71,5 +84,13 @@ public class LocationController {
 		List<Location> locations = service.getAllLocations();
 		modelMap.addAttribute("locations", locations);
 		return "displayLocations";
+	}
+	
+	@RequestMapping("/generateReport")
+	public String generateReport() {
+		String path = sc.getRealPath("/");		
+		List<Object[]> data = repository.findTypeAndTypeCount();
+		reportUtil.generatePieChart(null, data);
+		return "report";
 	}
 }
