@@ -17,6 +17,8 @@
       - [Create the Services Layer](#create-the-services-layer)
       - [Create the Controller](#create-the-controller)
       - [Flow](#flow)
+  - [Utility Layer](#utility-layer)
+      - [Email Use Case](#email-use-case)
 
 ## Java Project Development Concepts
 
@@ -286,3 +288,77 @@ The flow of creating a location is as follows:
 4. The service implementation uses the LocationRepository
 5. Spring uses Hibernate internally to convert the model object into a database record
 6. We get the location object back as a response through the controller
+
+## Utility Layer
+
+The Utility Layer performs a specialized operation, for example, an email use case or generating a report. The code in the Utility Layer is typically common across the application.
+
+#### Email Use Case
+
+For the email use case, we will follow three steps:
+
+1. Add Spring Mail Dependency
+2. Code the Utility Layer
+3. Configure Spring Boot Properties
+
+The EmailSender interface and its implementation from Spring Email will be used. We will be creating the EmailUtil interface and its implementation and will use the EmailSender interface.
+
+```java
+@Component
+public class EmailUtilImpl implements EmailUtil {
+
+	@Autowired
+	private JavaMailSender sender;
+
+	@Override
+	public void sendEmail(String toAddress, String subject, String body) {
+		MimeMessage message = sender.createMimeMessage();
+		MimeMessageHelper helper = new MimeMessageHelper(message);
+		try {
+			helper.setTo(toAddress);
+			helper.setText(body);
+			helper.setSubject(subject);
+		} catch (MessagingException e) {
+			e.printStackTrace();
+		}
+
+		sender.send(message);
+	}
+}
+```
+
+In the application.properties, we need to configure the email properties. Gmail allows us to use port 587.
+
+```
+spring.mail.host=smtp.gmail.com
+spring.mail.port=587
+spring.mail.username=
+spring.mail.password=
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
+spring.mail.properties.mail.smtp.auth=true
+```
+
+To test, we can add the following code to our LocationController to send an email after creating a location.
+
+```java
+@Controller
+public class LocationController {
+
+	@Autowired
+	LocationService service;
+
+	@Autowired
+	EmailUtil emailUtil;
+
+	@RequestMapping("/saveLoc")
+	public String saveLocation(@ModelAttribute("location") Location location, ModelMap modelMap) {
+		Location locationSaved = service.saveLocation(location);
+		String msg = "Location saved with id: " + locationSaved.getId();
+		modelMap.addAttribute("msg", msg);
+
+		// send email
+		emailUtil.sendEmail("springxyzabc@gmail.com", "Location Saved", "Location Saved successfully");
+		return "createLocation";
+	}
+```
