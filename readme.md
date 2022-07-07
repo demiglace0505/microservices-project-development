@@ -24,6 +24,11 @@
   - [Integration Layer](#integration-layer)
       - [REST Principles](#rest-principles)
       - [Creating the REST Controller](#creating-the-rest-controller)
+  - [Flight Reservation Use Case](#flight-reservation-use-case)
+      - [Creating the Model Class](#creating-the-model-class-2)
+      - [Creating the Data Access Layer](#creating-the-data-access-layer)
+      - [Creating the User Registration Controller](#creating-the-user-registration-controller)
+      - [Handling Login](#handling-login)
 
 ## Java Project Development Concepts
 
@@ -202,7 +207,7 @@ spring.datasource.username=root
 spring.datasource.password=1234
 
 spring.jpa.show-sql=true
-spring.servlet.context-path=/locationweb
+server.servlet.context-path=/locationweb
 ```
 
 #### Create the Services Layer
@@ -485,5 +490,212 @@ public class LocationRESTController {
 	public Location getLocation(@PathVariable("id") int id) {
 		return locationRepository.findById(id).get();
 	}
+}
+```
+
+## Flight Reservation Use Case
+
+For the flight reservation use case, we use the following db schema for the reservation database.
+
+```sql
+CREATE TABLE USER
+(
+ID INT NOT NULL AUTO_INCREMENT,
+FIRST_NAME VARCHAR(20),
+LAST_NAME VARCHAR(20),
+EMAIL VARCHAR(20),
+PASSWORD VARCHAR(256),
+PRIMARY KEY (ID),
+UNIQUE KEY (EMAIL)
+)
+
+CREATE TABLE FLIGHT
+(
+  ID INT  NOT NULL AUTO_INCREMENT,
+  FLIGHT_NUMBER VARCHAR(20)  NOT NULL,
+  OPERATING_AIRLINES VARCHAR(20)  NOT NULL,
+  DEPARTURE_CITY VARCHAR(20)  NOT NULL,
+  ARRIVAL_CITY VARCHAR(20)  NOT NULL,
+  DATE_OF_DEPARTURE DATE  NOT NULL,
+  ESTIMATED_DEPARTURE_TIME TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (ID)
+)
+
+CREATE TABLE PASSENGER
+(
+  ID         INT NOT NULL AUTO_INCREMENT,
+  FIRST_NAME       VARCHAR(256),
+  LAST_NAME    VARCHAR(256),
+  MIDDLE_NAME   VARCHAR(256),
+  EMAIL VARCHAR(50),
+  PHONE VARCHAR(10),
+  PRIMARY KEY (ID)
+)
+
+CREATE TABLE RESERVATION
+(
+  ID INT NOT NULL AUTO_INCREMENT,
+  CHECKED_IN TINYINT(1),
+  NUMBER_OF_BAGS INT,
+  PASSENGER_ID INT,
+  FLIGHT_ID INT,
+  CREATED TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (ID),
+  FOREIGN KEY (PASSENGER_ID) REFERENCES PASSENGER(ID) ON DELETE CASCADE,
+  FOREIGN KEY (FLIGHT_ID) REFERENCES FLIGHT(ID)
+)
+```
+
+The necessary dependencies for this project are Spring Web, JPA and MySQL, Thymeleaf.
+
+#### Creating the Model Class
+
+The first step is to create the Model classes by mapping our database tables into our classes. The id fields are auto-increment in the database, hence we use **@GeneratedValue** annotation. Since the id field is common across all four entities, we can create a parent class AbstractEntity for it, which we mark with **@MappedSuperClass** to tell that this class is not mapped directly to a database table and acts as a parent class for other entities. The relationship between reservation, passenger and flight is one to one. We define the relations in the passenger and flight fields of the Reservation class using JPA annotations so that when we save a reservation, the foreign keys for the passenger and flight will be saved to the reservation table.
+
+```java
+@MappedSuperclass
+public class AbstractEntity {
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+}
+
+@Entity
+public class User extends AbstractEntity {
+	private String firstName;
+	private String lastName;
+	private String email;
+	private String password;
+}
+
+@Entity
+public class Passenger extends AbstractEntity {
+	private String firstName;
+	private String lastName;
+	private String middleName;
+	private String email;
+	private String phone;
+}
+
+@Entity
+public class Flight extends AbstractEntity{
+	private String flightNumber;
+	private String operatingAirlines;
+	private String departureCity;
+	private String arrivalCity;
+	private Date dateOfDeparture;
+	private Timestamp estimatedDepartureTime;
+}
+
+@Entity
+public class Reservation extends AbstractEntity{
+	private Boolean checkedIn;
+	private int numberOfBags;
+	@OneToOne
+	private Passenger passenger;
+	@OneToOne
+	private Flight flight;
+}
+```
+
+#### Creating the Data Access Layer
+
+With Spring Data, we can create the interfaces that will be responsible for performing the CRUD operations on the entity. These interfaces will extend the JpaRepository from Spring Data.
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+
+}
+
+public interface FlightRepository extends JpaRepository<Flight, Long> {
+
+}
+
+public interface PassengerRepository extends JpaRepository<Passenger, Long> {
+
+}
+
+public interface ReservationRepository extends JpaRepository<Reservation, Long> {
+
+}
+```
+
+#### Creating the User Registration Controller
+
+We create the controller for displaying the user registration page. The `/showReg` URL endpoint is mapped to the thymeleaf template `login/registerUser`. The form is mapped to _registerUser_ so we need to create the register method POST mapping which takes a user using **@ModelAttribute**, saves it to the database, and returns the login view.
+
+```html
+<!-- login/registerUser.html -->
+<html xmlns:th="http://www.thymeleaf.org">
+  <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+  <html>
+    <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+      <title>Register User</title>
+    </head>
+    <body>
+      <h2>User Registration:</h2>
+      <form action="registerUser" method="post">
+        <pre>
+First Name: <input type="text" name="firstName"/>
+Last Name:  <input type="text" name="lastName"/>
+User Name: <input type="text" name="email"/>
+Password: <input type="password" name="password"/>
+Confirm Password: <input type="password" name="confirmPassword"/>
+<input type="submit" value="register"/>
+</pre>
+      </form>
+    </body>
+  </html>
+</html>
+```
+
+```java
+@Controller
+public class UserController {
+
+	@Autowired
+	UserRepository userRepository;
+
+	@RequestMapping("/showReg")
+	public String showRegistrationPage() {
+		return "login/registerUser";
+	}
+
+	@RequestMapping(value="/registerUser", method=RequestMethod.POST)
+	public String register(@ModelAttribute("user") User user) {
+		userRepository.save(user);
+		return "login/login";
+	}
+
+  @RequestMapping(value="/login", method=RequestMethod.POST)
+	public String login(String email, String password) {
+		return "login/login";
+	}
+}
+```
+
+#### Handling Login
+
+For logging in, We need to use **@RequestParam** to map the email and password from the form into the request parameters. To send a message back, we need a **ModelMap** attribute which we send as _msg_ back to the login page.
+
+We add a new method in our UserRepository **findByEmail**, but thanks to Spring Data, we just need to follow the findBy naming convention, and it will automatically use the email field of the User, without us needing to explicitly write the method. Spring Data automatically generates the query using the email from the request.
+
+```java
+	@RequestMapping(value="/login", method=RequestMethod.POST)
+	public String login(@RequestParam("email") String email, @RequestParam("password") String password, ModelMap modelMap) {
+		User user = userRepository.findByEmail(email);
+		if (user.getPassword().equals(password)) {
+			return "findFlights";
+		} else {
+			modelMap.addAttribute("msg", "Invalid username or password");
+		}
+		return "login/login";
+	}
+```
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+	User findByEmail(String email);
 }
 ```
