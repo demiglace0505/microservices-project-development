@@ -21,6 +21,9 @@
       - [Email Use Case](#email-use-case)
       - [Reports Use Case](#reports-use-case)
       - [Creating the Controller](#creating-the-controller)
+  - [Integration Layer](#integration-layer)
+      - [REST Principles](#rest-principles)
+      - [Creating the REST Controller](#creating-the-rest-controller)
 
 ## Java Project Development Concepts
 
@@ -435,4 +438,52 @@ In our LocationController, we add a view for the report endpoint.
 		reportUtil.generatePieChart(null, data);
 		return "report";
 	}
+```
+
+## Integration Layer
+
+The Microservice applications communicate with each other through the Integration Layer. It also allows these applications to be loosely coupled and interoperable. The key technologies used in Integration Layer are REST and messaging.
+
+#### REST Principles
+
+1. Uniform Interface through POST, GET, PUT, DELETE methods
+2. Easy Access using Nouns
+3. Multiple Formats such as XML, JSON, plain text, etc.
+
+#### Creating the REST Controller
+
+To expose out RESTful web services, we need to create the REST Controller Integration Layer. To specify a RESTful controller, we use the annotation **@RestController** and map to a URI using **@RequestMapping**. Spring also automatically serializes the list into JSON using jackson. The **@GetMapping** annotation binds the GET method to the RESTful endpoint /locations. For the parameters, we need to use **@RequestBody** so that Spring will deserialize the request into a location object. For deleting and retrieving a specific location, we need the uri path variable and map it into the id parameter using **@PathVariable** annotation.
+
+```java
+@RestController
+@RequestMapping("/locations")
+public class LocationRESTController {
+	@Autowired
+	LocationRepository locationRepository;
+
+	@GetMapping
+	public List<Location> getLocations() {
+		return locationRepository.findAll();
+	}
+
+	@PostMapping
+	public Location createLocation(@RequestBody Location location) {
+		return locationRepository.save(location);
+	}
+
+	@PutMapping
+	public Location updateLocation(@RequestBody Location location) {
+		return locationRepository.save(location);
+	}
+
+	@DeleteMapping("/${id}")
+	public void deleteLocation(@PathVariable("id") int id) {
+		locationRepository.deleteById(id);
+	}
+
+  @GetMapping("/${id}")
+	public Location getLocation(@PathVariable("id") int id) {
+		return locationRepository.findById(id).get();
+	}
+}
 ```
