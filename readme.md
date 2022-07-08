@@ -36,6 +36,9 @@
       - [Creating the Reservation Request Controller Method and Services Layer](#creating-the-reservation-request-controller-method-and-services-layer)
       - [Integration Layer](#integration-layer-1)
       - [CORS](#cors)
+  - [Flight Checkin Application](#flight-checkin-application)
+      - [Creating the Integration Layer](#creating-the-integration-layer)
+      - [Creating the Controller](#creating-the-controller-1)
 
 ## Java Project Development Concepts
 
@@ -892,6 +895,7 @@ For the updateReservation method, we create a new DTO class ReservationUpdateReq
 
 ```java
 @RestController
+@CrossOrigin
 public class ReservationRestController {
 	@Autowired
 	ReservationRepository reservationRepository;
@@ -924,3 +928,119 @@ public class ReservationUpdateRequest {
 #### CORS
 
 Later on, the backend will run in port 8080 and the Angular app in port 4200. In order for the Angular app to communicate with the REST application, we need to turn on cross-origin headers. We can mark our controller with the **@CrossOrigin** annotation.
+
+## Flight Checkin Application
+
+For the Flight Checkin Application, the necessary dependencies are Spring Web, Jasper and JSTL for the JSP pages. We don't need MySQL and JPA anymore since we will be consuming REST services from the Flight Reservation application.
+
+We also need to configure the application.properties to use prefix and suffix for our JSP templates.
+
+```
+server.port=9090
+server.servlet.context-path=/flightcheckin
+
+spring.mvc.view.prefix=/WEB-INF/jsps/
+spring.mvc.view.suffix=.jsp
+```
+
+#### Creating the Integration Layer
+
+The Integration Layer for the Checkin application will be the RESTful client layer that will invoke the web services exposed by FlightReservation. We first need our DTO classes for Flight, Passenger, Reservation and ReservationUpdateRequest. These do not need the JPA annotations anymore as these are only plain DTOs.
+
+```java
+public class Flight {
+	private Long id;
+	private String flightNumber;
+	private String operatingAirlines;
+	private String departureCity;
+	private String arrivalCity;
+	@DateTimeFormat(pattern = "MM-dd-yyyy")
+	private Date dateOfDeparture;
+	private Timestamp estimatedDepartureTime;
+}
+
+public class Passenger  {
+	private Long id;
+	private String firstName;
+	private String lastName;
+	private String middleName;
+	private String email;
+	private String phone;
+}
+
+public class Reservation {
+	private Long id;
+	private Boolean checkedIn;
+	private int numberOfBags;
+	private Passenger passenger;
+	private Flight flight;
+}
+
+public class ReservationUpdateRequest {
+	private Long id;
+	private Boolean checkedIn;
+	private int numberOfBags;
+}
+```
+
+We can now proceed with the implementation of ReservationRestClient. For the GET method, we can use Spring **RestTemplate** and its **getForObject** method. For POST, we use **postForObject** to which we pass the request object.
+
+```java
+@Component
+public class ReservationRestClientImpl implements ReservationRestClient {
+	private static final String RESERVATION_REST_URL = "http://localhost:8080/flightreservation/reservations/";
+
+	@Override
+	public Reservation findReservation(Long id) {
+		RestTemplate restTemplate = new RestTemplate();
+		Reservation reservation = restTemplate.getForObject(RESERVATION_REST_URL + id,
+				Reservation.class);
+		return reservation;
+	}
+
+	@Override
+	public Reservation updateReservation(ReservationUpdateRequest request) {
+		RestTemplate restTemplate = new RestTemplate();
+		Reservation reservation = restTemplate.postForObject(RESERVATION_REST_URL, request,
+				Reservation.class);
+		return reservation;
+	}
+}
+```
+
+#### Creating the Controller
+
+We map the showStartCheckin method into the URL _/showStartCheckin_ using the JSP template _startCheckIn_. When the form is submitted, we display the reservation information to the user through the startCheckIn method, where we invoke the ReservationRestClient. We need to map the id from the submitted request (from the form) into the method parameter using **@RequestParam**. The reservation object needs to be sent back to the next page using **ModelMap**. For the checkin, we pass the request parameters into the method parameters, and then instantiate our DTO reservationUpdateRequest.
+
+```java
+@Controller
+public class CheckInController {
+
+	@Autowired
+	ReservationRestClient restClient;
+
+	@RequestMapping("/showStartCheckin")
+	public String showStartCheckin() {
+		System.out.println("start check in");
+		return "startCheckIn";
+	}
+
+	@RequestMapping("/startCheckIn")
+	public String startCheckIn(@RequestParam("reservationId") Long reservationId, ModelMap modelMap) {
+		Reservation reservation = restClient.findReservation(reservationId);
+		modelMap.addAttribute("reservation", reservation);
+		return "displayReservationDetails";
+	}
+
+	@RequestMapping("/completeCheckIn")
+	public String completeCheckin(@RequestParam("reservationId") Long reservationid,
+			@RequestParam("numberOfBags") int numberOfBags) {
+		ReservationUpdateRequest reservationUpdateRequest =	new ReservationUpdateRequest();
+		reservationUpdateRequest.setId(reservationid);
+		reservationUpdateRequest.setNumberOfBags(numberOfBags);
+		reservationUpdateRequest.setCheckedIn(true);
+		restClient.updateReservation(reservationUpdateRequest);
+		return "checkInConfirmation";
+	}
+}
+```
