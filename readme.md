@@ -34,6 +34,8 @@
       - [Creating the Flight Reservation Controller](#creating-the-flight-reservation-controller)
   - [Reservation Use Case](#reservation-use-case)
       - [Creating the Reservation Request Controller Method and Services Layer](#creating-the-reservation-request-controller-method-and-services-layer)
+      - [Integration Layer](#integration-layer-1)
+      - [CORS](#cors)
 
 ## Java Project Development Concepts
 
@@ -879,3 +881,46 @@ public class ReservationController {
 ```
 
 The table for Reservation uses the primary key of the passenger and flight, which is id, as its foreign key.
+
+#### Integration Layer
+
+In the Flight Check In application, we will need to fetch the reservation data from the Flight Reservation application when a user starts the check in process. Once the user checks in, an update should be sent to the flight reservation application to trigger a database update. We can do this through a RESTful api that we will be exposing in the Flight Reservation application.
+
+To make a class a REST controller, we need to annotate it with **@RestController**. There will be two methods, one for retrieving a reservation and the other for updating the reservation. In the RequestMapping, we will get the particular id using `{id}`. We bind the id method paramater to the URL parameter using the **PathVariable** annotation.
+
+For the updateReservation method, we create a new DTO class ReservationUpdateRequest to serve as a wrapper. This class will wrap the reservation id, numberOfBags, and checkedIn. The **@RequestBody** annotation tells Spring that at runtime, the ReservationUpdateRequest object should be constructed using the deserialized JSON content from the request body.
+
+```java
+@RestController
+public class ReservationRestController {
+	@Autowired
+	ReservationRepository reservationRepository;
+
+	@RequestMapping("/reservations/{id}")
+	public Reservation findReservation(@PathVariable("id") Long id) {
+		Reservation reservation = reservationRepository.findById(id).get();
+		return reservation;
+	}
+
+	@RequestMapping("/reservations")
+	public Reservation updateReservation(ReservationUpdateRequest request) {
+		Reservation reservation = reservationRepository.findById(request.getId()).get();
+		reservation.setNumberOfBags(request.getNumberOfBags());
+		reservation.setCheckedIn(request.getCheckedIn());
+		Reservation updatedReservation = reservationRepository.save(reservation);
+		return updatedReservation;
+	}
+}
+```
+
+```java
+public class ReservationUpdateRequest {
+	private Long id;
+	private Boolean checkedIn;
+	private int numberOfBags;
+}
+```
+
+#### CORS
+
+Later on, the backend will run in port 8080 and the Angular app in port 4200. In order for the Angular app to communicate with the REST application, we need to turn on cross-origin headers. We can mark our controller with the **@CrossOrigin** annotation.
