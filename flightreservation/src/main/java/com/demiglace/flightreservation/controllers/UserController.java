@@ -21,6 +21,11 @@ public class UserController {
 	public String showRegistrationPage() {
 		return "login/registerUser";
 	}
+	
+	@RequestMapping("/showLogin")
+	public String showLoginPage() {
+		return "login/login";
+	}
 
 	@RequestMapping(value="/registerUser", method=RequestMethod.POST)
 	public String register(@ModelAttribute("user") User user) {

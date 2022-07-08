@@ -29,6 +29,11 @@
       - [Creating the Data Access Layer](#creating-the-data-access-layer)
       - [Creating the User Registration Controller](#creating-the-user-registration-controller)
       - [Handling Login](#handling-login)
+  - [Find Flights Use Case](#find-flights-use-case)
+      - [Creating the Flight Controller](#creating-the-flight-controller)
+      - [Creating the Flight Reservation Controller](#creating-the-flight-reservation-controller)
+  - [Reservation Use Case](#reservation-use-case)
+      - [Creating the Reservation Request Controller Method and Services Layer](#creating-the-reservation-request-controller-method-and-services-layer)
 
 ## Java Project Development Concepts
 
@@ -583,6 +588,9 @@ public class Flight extends AbstractEntity{
 	private String operatingAirlines;
 	private String departureCity;
 	private String arrivalCity;
+	@DateTimeFormat(pattern = "MM-dd-yyyy")
+	@Temporal(TemporalType.DATE)
+	private Date dateOfDeparture;
 	private Date dateOfDeparture;
 	private Timestamp estimatedDepartureTime;
 }
@@ -699,3 +707,175 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	User findByEmail(String email);
 }
 ```
+
+## Find Flights Use Case
+
+The find flights module is where the user can enter where he wants to fly from and to ata specified date, which returns a list of flights. We create the template for finding flights.
+
+```html
+<html xmlns:th="http://www.thymeleaf.org">
+  <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+  <html>
+    <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+      <title>Find Flights</title>
+    </head>
+    <body>
+      <h2>Find FLights:</h2>
+      <form action="findFlights" method="post">
+        From:<input type="text" name="from" /> To:<input
+          type="text"
+          name="to"
+        />
+        Departure Date:<input type="text" name="departureDate" />
+        <input type="submit" value="search" />
+      </form>
+    </body>
+  </html>
+</html>
+```
+
+#### Creating the Flight Controller
+
+The findFlights method's parameters needs to be marked with **@RequestParam** to map these form values into the request parameters. The departureDate also requires the **@DateTimeFormat** annotation from Spring to be able to format it appropriately. To return the results back to the view, we need to define a **ModelMap**
+
+```java
+@Controller
+public class FlightController {
+	@Autowired
+	FlightRepository flightRepository;
+
+	@RequestMapping("/findFlights")
+	public String findFlights(@RequestParam("from") String from, @RequestParam("to") String to,
+			@RequestParam("departureDate") @DateTimeFormat(pattern = "MM-dd-yyyy") Date departureDate, ModelMap modelMap) {
+		List<Flight> flights = flightRepository.findFlights(from, to, departureDate);
+		modelMap.addAttribute("flights", flights);
+		return "displayFlights";
+	}
+}
+```
+
+In our FlightRepository, we create a new method findFlights that returns the flights. Using **@Param** annotation, we can bind the method parameters from the query. At runtime when the method is invoked, Spring Data through hibernate will execute the query against the database and generate a native SQL internally, get a list of flights and return back to our controller.
+
+```java
+public interface FlightRepository extends JpaRepository<Flight, Long> {
+	@Query("from Flight where departureCity=:departureCity and arrivalCity=:arrivalCity and dateOfDeparture=:dateOfDeparture")
+	List<Flight> findFlights(@Param("departureCity") String from, @Param("arrivalCity") String to,
+			@Param("dateOfDeparture") Date departureDate);
+}
+```
+
+#### Creating the Flight Reservation Controller
+
+In the Reservation Controller, we create an endpoint at _/showCompleteReservation_. The request parameter for the flightId is mapped into the method parameters using **@RequestParam** annotation. Inside the method, we will retrieve the flight information and forward it to the completeReservation page as an attribute using **ModelMap**.
+
+```java
+@Controller
+public class ReservationController {
+	@Autowired
+	FlightRepository flightRepository;
+
+	@RequestMapping("showCompleteReservation")
+	public String showCompleteReservation(@RequestParam("flightId") Long flightId, ModelMap modelMap) {
+		Flight flight = flightRepository.findById(flightId).get();
+		modelMap.addAttribute("flight", flight);
+		return "completeReservation";
+	}
+}
+```
+
+## Reservation Use Case
+
+Once the user enters the passenger details and card details, we will create a reservation in the database to which we will assign the passenger and flight information. The flow will be:
+
+1. The ReservationControlle will show the complete reservation to the end user
+2. User enters their card information
+3. The request will be sent to the completeReservation method on the ReservationController
+4. Use the Services Layer ReservationService's bookFlight method
+5. Create the reservation using ReservationRepository
+
+#### Creating the Reservation Request Controller Method and Services Layer
+
+The request parameters comes from the completeReservation template such as the passenger details, card details and flight id. We create a new DTO java class for a Reservation Request. This reservation request will be passed on to the Services Layer hence it is a DTO.
+
+```java
+public class ReservationRequest {
+	private Long flightId;
+
+	// passenger details
+	private String passengerFirstName;
+	private String passengerLastName;
+	private String passengerEmail;
+	private String passengerPhone;
+
+	// card details
+	private String nameOnTheCard;
+	private String cardNumber;
+	private String expirationDate;
+	private String securityCode;
+}
+```
+
+We will create the ReservationService, which involves business logic and database calls. The bookFlight method takes a ReservationRequest, retrieves the flight from the database, creates a passenger in the database and uses that information to create a reservation and return it to the controller. This class will be annotated with **@Service**.
+
+```java
+@Service
+public class ReservationServiceImpl implements ReservationService {
+	@Autowired
+	FlightRepository flightRepository;
+
+	@Autowired
+	PassengerRepository passengerRepository;
+
+	@Autowired
+	ReservationRepository reservationRepository;
+
+	@Override
+	public Reservation bookFlight(ReservationRequest request) {
+		// insert code for invoking payment gateway here
+
+		// get the flight
+		Long flightId = request.getFlightId();
+		Flight flight = flightRepository.findById(flightId).get();
+
+		// create new passenger and save to database
+		Passenger passenger = new Passenger();
+		passenger.setFirstName(request.getPassengerFirstName());
+		passenger.setLastName(request.getPassengerLastName());
+		passenger.setPhone(request.getPassengerPhone());
+		passenger.setEmail(request.getPassengerEmail());
+		Passenger savedPassenger = passengerRepository.save(passenger);
+
+		// create the reservation and save to database
+		Reservation reservation = new Reservation();
+		reservation.setFlight(flight);
+		reservation.setPassenger(savedPassenger);
+		reservation.setCheckedIn(false);
+		Reservation savedReservation = reservationRepository.save(reservation);
+
+		return savedReservation;
+	}
+}
+```
+
+We can then proceed on using this service in our ReservationController, which redirects to the _reservationConfirmation_ template to which we pass a reservation message and id by defining a **ModelMap**.
+
+```java
+@Controller
+public class ReservationController {
+	@Autowired
+	FlightRepository flightRepository;
+
+	@Autowired
+	ReservationService reservationService;
+
+	@RequestMapping(value = "/completeReservation", method = RequestMethod.POST)
+	public String completeReservation(ReservationRequest request, ModelMap modelMap) {
+		Reservation reservation = reservationService.bookFlight(request);
+		modelMap.addAttribute("msg", "Reservation Created Successfully and the id is " + reservation.getId());
+		return "reservationConfirmation";
+	}
+}
+```
+
+The table for Reservation uses the primary key of the passenger and flight, which is id, as its foreign key.

@@ -4,6 +4,10 @@ import java.sql.Timestamp;
 import java.util.Date;
 
 import javax.persistence.Entity;
+import javax.persistence.Temporal;
+import javax.persistence.TemporalType;
+
+import org.springframework.format.annotation.DateTimeFormat;
 
 @Entity
 public class Flight extends AbstractEntity {
@@ -11,6 +15,8 @@ public class Flight extends AbstractEntity {
 	private String operatingAirlines;
 	private String departureCity;
 	private String arrivalCity;
+	@DateTimeFormat(pattern = "MM-dd-yyyy")
+	@Temporal(TemporalType.DATE)
 	private Date dateOfDeparture;
 	private Timestamp estimatedDepartureTime;
 
