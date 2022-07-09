@@ -43,6 +43,7 @@
   - [Email Function](#email-function)
   - [Logging](#logging)
       - [Logback Configuration](#logback-configuration)
+  - [Externalizing Properties](#externalizing-properties)
 
 ## Java Project Development Concepts
 
@@ -1288,4 +1289,27 @@ Using the logback configuration, we no longer need to define logging parameters 
 		<appender-ref ref="FILE"></appender-ref>
 	</root>
 </configuration>
+```
+
+## Externalizing Properties
+
+We can set properties in application.properties instead of hardcoding values in our application.
+
+```java
+com.demiglace.flightreservation.itinerary.dirpath=C:\\Users\\ChristianCruz\\Documents\\test\\
+com.demiglace.flightreservation.itinerary.email.subject=Please find your Itinerary attached
+com.demiglace.flightreservation.itinerary.email.body=Itinerary for Your Flight
+```
+
+To inject, we need to use the **@Value** annotation.
+
+```java
+	@Value("${com.demiglace.flightreservation.itinerary.email.body}")
+	private String EMAIL_BODY;
+
+	@Value("${com.demiglace.flightreservation.itinerary.email.subject}")
+	private String EMAIL_SUBJECT;
+
+  @Value("${com.demiglace.flightreservation.itinerary.dirpath}")
+	private String ITINERARY_DIR;
 ```
