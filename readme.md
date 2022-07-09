@@ -41,6 +41,8 @@
       - [Creating the Controller](#creating-the-controller-1)
   - [Itenerary Function](#itenerary-function)
   - [Email Function](#email-function)
+  - [Logging](#logging)
+      - [Logback Configuration](#logback-configuration)
 
 ## Java Project Development Concepts
 
@@ -1203,4 +1205,87 @@ public class ReservationServiceImpl implements ReservationService {
 		return savedReservation;
 	}
 }
+```
+
+## Logging
+
+Logging is the process of writing messages from within our application to a central location for diagnostic purposes. We can do it by creating a **Logger** object and using it to start writing messages. SL4J is a wrapper that makes logging easy. There are various log levels:
+
+1. Error - when something goes wrong
+2. Warning - when something might go wrong
+3. Info - information
+4. Debug - used for debugging
+5. Trace - everything
+
+To use these levels, we use the appropriate method on the logger. We can also set the log level dynamically through configurations.
+
+Springboot already pulls logback-classic and logback-core as dependencies automatically. To use logging, we instantiate a static final of Logger from sl4j.
+
+```java
+@Controller
+public class UserController {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(UserController.class);
+
+	@RequestMapping(value="/login", method=RequestMethod.POST)
+	public String login(@RequestParam("email") String email, @RequestParam("password") String password, ModelMap modelMap) {
+		LOGGER.error("ERR");
+		LOGGER.warn("WARN");
+		LOGGER.info("INFO");
+		LOGGER.debug("DEBUG");
+		LOGGER.trace("TRACE");
+		User user = userRepository.findByEmail(email);
+		if (user.getPassword().equals(password)) {
+			return "findFlights";
+		} else {
+			modelMap.addAttribute("msg", "Invalid username or password");
+		}
+		return "login/login";
+	}
+}
+
+```
+
+By default, the log level of sl4j is info and above. We can configure the root log level in application.properties. We can also configure Spring to write the logs to a file.
+
+```
+logging.level.root=ERROR
+logging.file.name=C:/Users/ChristianCruz/Documents/Christian/projects/microservices-project-development/flightreservation/logs/flightreservation.log
+```
+
+#### Logback Configuration
+
+A lot of real time applications use XML configuration to come up with custom logging patterns and rolling file appenders. Logger internally uses an **Appender**, which is responsible for taking the log message and send it to a file, or console. Appender internally uses an **encoder** which determines how the log message should look like. When we configure the encoder class, we can provide a particular pattern using which it should log the message. The policy configuration enables us to configure rolling file appenders.
+
+Using the logback configuration, we no longer need to define logging parameters in our application.properties. The _class_ property of the appender is where we select a class from the logback API. **RollingFileAppender** has the capability of creating new files once the current log file reaches a limit using rollingPolicy. Within the rollingPolicy, we can determine the naming pattern when it rolls or archives our log files and where it should be archived. We can also determine the timing policy to be used. The following policy will be triggered every 24 hours or when the file size reaches 10KB.
+
+```xml
+<configuration>
+	<property name="LOG_DIR"
+		value="C:/Users/ChristianCruz/Documents/Christian/projects/microservices-project-development/flightreservation/logs"></property>
+	<property name="FILE_PREFIX" value="flightreservation"></property>
+
+	<appender name="FILE"
+		class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_DIR}/${FILE_PREFIX}.log</file>
+		<encoder
+			class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+			<Pattern>%d{yyyy-MM-dd HH:mm:ss} - %msg%n</Pattern>
+		</encoder>
+
+		<rollingPolicy
+			class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<fileNamePattern>${LOG_DIR}/archived/${FILE_PREFIX}.%d{yyyy-MM-dd}.%i.log
+			</fileNamePattern>
+			<timeBasedFileNamingAndTriggeringPolicy
+				class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+					<maxFileSize>10KB</maxFileSize>
+			</timeBasedFileNamingAndTriggeringPolicy>
+		</rollingPolicy>
+	</appender>
+
+	<root level="info">
+		<appender-ref ref="FILE"></appender-ref>
+	</root>
+</configuration>
 ```

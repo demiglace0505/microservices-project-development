@@ -13,6 +13,12 @@ public class User extends AbstractEntity {
 	private String email;
 	private String password;
 
+	@Override
+	public String toString() {
+		return "User [firstName=" + firstName + ", lastName=" + lastName + ", email=" + email + ", password=" + password
+				+ "]";
+	}
+
 	public String getFirstName() {
 		return firstName;
 	}

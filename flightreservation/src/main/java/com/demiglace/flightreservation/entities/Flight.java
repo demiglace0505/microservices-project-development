@@ -20,6 +20,15 @@ public class Flight extends AbstractEntity {
 	private Date dateOfDeparture;
 	private Timestamp estimatedDepartureTime;
 
+	
+	
+	@Override
+	public String toString() {
+		return "Flight [flightNumber=" + flightNumber + ", operatingAirlines=" + operatingAirlines + ", departureCity="
+				+ departureCity + ", arrivalCity=" + arrivalCity + ", dateOfDeparture=" + dateOfDeparture
+				+ ", estimatedDepartureTime=" + estimatedDepartureTime + "]";
+	}
+
 	public String getFlightNumber() {
 		return flightNumber;
 	}
