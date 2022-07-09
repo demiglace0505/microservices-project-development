@@ -39,6 +39,8 @@
   - [Flight Checkin Application](#flight-checkin-application)
       - [Creating the Integration Layer](#creating-the-integration-layer)
       - [Creating the Controller](#creating-the-controller-1)
+  - [Itenerary Function](#itenerary-function)
+  - [Email Function](#email-function)
 
 ## Java Project Development Concepts
 
@@ -1041,6 +1043,164 @@ public class CheckInController {
 		reservationUpdateRequest.setCheckedIn(true);
 		restClient.updateReservation(reservationUpdateRequest);
 		return "checkInConfirmation";
+	}
+}
+```
+
+## Itenerary Function
+
+For generating PDF files, we need to add the **IText** maven dependency. We then created a PDFGenerator utility class.
+
+```java
+@Component
+public class PDFGenerator {
+	public void generateItinerary(Reservation reservation, String filePath) {
+		Document document = new Document();
+		try {
+			PdfWriter.getInstance(document, new FileOutputStream(filePath));
+			document.open();
+			document.add(generateTable(reservation));
+			document.close();
+		} catch (FileNotFoundException | DocumentException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private PdfPTable generateTable(Reservation reservation) {
+		// 2 columns
+		PdfPTable table = new PdfPTable(2);
+		PdfPCell cell;
+
+		cell = new PdfPCell(new Phrase("Flight Itinerary"));
+		cell.setColspan(2);
+		table.addCell(cell);
+
+		cell = new PdfPCell(new Phrase("Flight Details"));
+		cell.setColspan(2);
+		table.addCell(cell);
+
+		table.addCell("Airlines");
+		table.addCell(reservation.getFlight().getOperatingAirlines());
+
+		table.addCell("Departure City");
+		table.addCell(reservation.getFlight().getDepartureCity());
+
+		table.addCell("Arrival City");
+		table.addCell(reservation.getFlight().getArrivalCity());
+
+		table.addCell("Flight Number");
+		table.addCell(reservation.getFlight().getFlightNumber());
+
+		table.addCell("Departure Date");
+		table.addCell(reservation.getFlight().getDateOfDeparture().toString());
+
+		table.addCell("Departure Time");
+		table.addCell(reservation.getFlight().getEstimatedDepartureTime().toString());
+
+		// passenger details
+		cell = new PdfPCell(new Phrase("Passenger Details"));
+		cell.setColspan(2);
+		table.addCell(cell);
+
+		table.addCell("First Name");
+		table.addCell(reservation.getPassenger().getFirstName());
+
+		table.addCell("Last Name");
+		table.addCell(reservation.getPassenger().getLastName());
+
+		table.addCell("Email");
+		table.addCell(reservation.getPassenger().getEmail());
+
+		table.addCell("Phone");
+		table.addCell(reservation.getPassenger().getPhone());
+
+		return table;
+	}
+}
+```
+
+## Email Function
+
+For sending emails, we need to add the spring-boot-starter-mail dependency. We then proceed on creating the Email Utility class. We need to first define the mail sender from Spring using **JavaMailSender** from Spring. To assign fields on our message, we can use the **MimeMessageHelper**.
+
+```java
+@Component
+public class EmailUtil {
+
+	@Autowired
+	private JavaMailSender sender;
+
+	public void sendItinerary(String toAddress, String filePath) {
+		MimeMessage message = sender.createMimeMessage();
+
+		try {
+			MimeMessageHelper messageHelper = new MimeMessageHelper(message, true);
+			messageHelper.setTo(toAddress);
+			messageHelper.setSubject("Itinerary for Your Flight");
+			messageHelper.setText("Please find your Itinerary attached.");
+			messageHelper.addAttachment("Itinerary", new File(filePath));
+
+			sender.send(message);
+		} catch (MessagingException e) {
+			e.printStackTrace();
+		}
+	}
+}
+```
+
+We can now invoke our utility classes for PDF and Email into our Service layer by injecting them.
+
+```java
+@Service
+public class ReservationServiceImpl implements ReservationService {
+
+	@Autowired
+	FlightRepository flightRepository;
+
+	@Autowired
+	PassengerRepository passengerRepository;
+
+	@Autowired
+	ReservationRepository reservationRepository;
+
+	@Autowired
+	PDFGenerator pdfGenerator;
+
+	@Autowired
+	EmailUtil emailUtil;
+
+	@Override
+	public Reservation bookFlight(ReservationRequest request) {
+		// insert code for invoking payment gateway here
+
+		// get the flight
+		Long flightId = request.getFlightId();
+		Flight flight = flightRepository.findById(flightId).get();
+
+		// create new passenger and save to database
+		Passenger passenger = new Passenger();
+		passenger.setFirstName(request.getPassengerFirstName());
+		passenger.setLastName(request.getPassengerLastName());
+		passenger.setPhone(request.getPassengerPhone());
+		passenger.setEmail(request.getPassengerEmail());
+		Passenger savedPassenger = passengerRepository.save(passenger);
+
+		// create the reservation and save to database
+		Reservation reservation = new Reservation();
+		reservation.setFlight(flight);
+		reservation.setPassenger(savedPassenger);
+		reservation.setCheckedIn(false);
+		Reservation savedReservation = reservationRepository.save(reservation);
+
+		// generate itinerary from the reservation
+		String filePath = "C:\\Users\\ChristianCruz\\Documents\\test\\" + savedReservation.getId() + ".pdf";
+		pdfGenerator.generateItinerary(savedReservation,
+				filePath);
+
+		// send email
+		emailUtil.sendItinerary(passenger.getEmail(), filePath);
+
+		return savedReservation;
 	}
 }
 ```
