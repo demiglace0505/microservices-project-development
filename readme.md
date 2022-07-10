@@ -44,6 +44,13 @@
   - [Logging](#logging)
       - [Logback Configuration](#logback-configuration)
   - [Externalizing Properties](#externalizing-properties)
+  - [Security](#security)
+      - [Encoding Password](#encoding-password)
+      - [Authorization Data Access Layer](#authorization-data-access-layer)
+      - [UserDetails Service](#userdetails-service)
+      - [Creating Security Configuration](#creating-security-configuration)
+      - [Password Encoder Bean](#password-encoder-bean)
+  - [Transaction Management](#transaction-management)
 
 ## Java Project Development Concepts
 
@@ -1312,4 +1319,269 @@ To inject, we need to use the **@Value** annotation.
 
   @Value("${com.demiglace.flightreservation.itinerary.dirpath}")
 	private String ITINERARY_DIR;
+```
+
+## Security
+
+Using Spring Security, we can encode the password, and load the user details from the database using Spring Security context. We can also implement authorization based on user roles.
+
+#### Encoding Password
+
+To encode a password, we need the **BCryptPasswordEncoder** from Spring Security. Using the encode method, we will no longer be storing the password as plaintext in the database.
+
+```java
+@Controller
+public class UserController {
+
+	@Autowired
+	UserRepository userRepository;
+
+	@Autowired
+	private BCryptPasswordEncoder encoder;
+
+	@RequestMapping(value="/registerUser", method=RequestMethod.POST)
+	public String register(@ModelAttribute("user") User user) {
+		LOGGER.info("inside register()" + user);
+		user.setPassword(encoder.encode(user.getPassword()));
+		userRepository.save(user);
+		return "login/login";
+	}
+```
+
+#### Authorization Data Access Layer
+
+We create an addFlights endpoint that will only be accessible to admins. We also create a new table for role. It has a primary key id and a role name. The user_role table maps a user to a role, with a many to many relationship. It has a user_id and role_id and both are primary keys in the user and role tables respectively.
+
+```sql
+CREATE TABLE ROLE
+(
+ID INT NOT NULL AUTO_INCREMENT,
+NAME VARCHAR(20),
+PRIMARY KEY (ID)
+);
+
+create table user_role(
+user_id int,
+role_id int,
+FOREIGN KEY (user_id)
+REFERENCES user(id),
+FOREIGN KEY (role_id)
+REFERENCES role(id)
+);
+```
+
+We first create the Role entity and map it to the user entity. A user can have multiple roles, and multiple roles can be assigned to a user hence we can use a Set of roles. To map the relationships between users and roles to the database, we use the **@ManyToMany** annotation. **@JoinTable** refers to the table that joins user and role table.
+
+```java
+@Entity
+public class User extends AbstractEntity {
+	private String firstName;
+	private String lastName;
+	private String email;
+	private String password;
+	@ManyToMany
+	@JoinTable(name = "user_role", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
+	private Set<Role> roles;
+
+@Entity
+public class Role extends AbstractEntity {
+	private String name;
+  @ManyToMany(mappedBy="roles")
+	private Set<User> users;
+}
+```
+
+To fetch the roles, we can create a RoleRepository that extends JpaRepository.
+
+```java
+public interface RoleRepository extends JpaRepository<Role, Long> {
+
+}
+```
+
+#### UserDetails Service
+
+The UserDetailsService interface from Spring Security has a **loadUserByUsername()** method which we need to override. We can instantiate a User object from Spring Security and pass unto it the username, password and role. This method should return a User object which implements a UserDetails from spring (The User is an implementation of UserDetails).
+
+```java
+@Service
+public class UserDetailsServiceImpl implements UserDetailsService {
+
+	@Autowired
+	UserRepository userRepository;
+
+	@Override
+	public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+		User user = userRepository.findByEmail(username);
+		if (user == null) {
+			throw new UsernameNotFoundException("User not found for user:" + username);
+		}
+		return new org.springframework.security.core.userdetails.User(user.getEmail(), user.getPassword(),
+				user.getRoles());
+	}
+}
+```
+
+For the role entity, we implement the **GrantedAuthority** interface from Spring. Spring internally calls the getAuthority() method to check what role a particular user has.
+
+```java
+@Entity
+public class Role extends AbstractEntity implements GrantedAuthority {
+	private String name;
+	@ManyToMany(mappedBy="roles")
+	private Set<User> users;
+
+	@Override
+	public String getAuthority() {
+		return name;
+	}
+}
+```
+
+We can then proceed on creating a SecurityService for logging in the user. This service will use the services provided by UserDetailsService. We first retrieve the user details from the database using **UserDetailsService**. We then create a UsernamePasswordAuthenticationToken by passing in the loaded UserDetails and the password that came in from the browser request. We also pass in the roles using **getAuthorities()**. We then use **AuthenticationManager** from Spring which will authenticate the request based on the previous parameters provided. If the authentication is successful, the state will be set to true. We then save the user state into the Spring Security context.
+
+```java
+@Service
+public class SecurityServiceImpl implements SecurityService {
+
+	@Autowired
+	UserDetailsService userDetailsService;
+
+	@Autowired
+	AuthenticationManager authenticationManager;
+
+	@Override
+	public boolean login(String username, String password) {
+		UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+		// create username and password authentication token
+		UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(userDetails, password,
+				userDetails.getAuthorities());
+
+		// authenticate token then set flag to true if authentication successful
+		authenticationManager.authenticate(token);
+
+		// retrieve state of the login
+		boolean result = token.isAuthenticated();
+
+		// set the token into the Spring Security context holder
+		if (result) {
+			SecurityContextHolder.getContext().setAuthentication(token);
+		}
+
+		return result;
+	}
+}
+```
+
+We can now update our UserController to use our SecurityService implementation instead of loading the user from the database and comparing the password.
+
+```java
+@Controller
+public class UserController {
+
+	@Autowired
+	private SecurityService securityService;
+
+	@RequestMapping(value="/login", method=RequestMethod.POST)
+	public String login(@RequestParam("email") String email, @RequestParam("password") String password, ModelMap modelMap) {
+//		User user = userRepository.findByEmail(email);
+		boolean loginResponse = securityService.login(email, password);
+
+		if (loginResponse) {
+			return "findFlights";
+		} else {
+			modelMap.addAttribute("msg", "Invalid username or password");
+		}
+
+		return "login/login";
+	}
+}
+```
+
+#### Creating Security Configuration
+
+To create the security configuration, we need to create a new class WebSecurityConfig that extends **WebSecurityConfigurerAdapter** from Spring. We need to annotate this class with **@Configuration** and **@EnableWebSecurity** to turn on the Security infrastructure of Spring. In the configure() method, we configure the authentication and authorization for our application. Using **antMatchers()** allows us to pass in any number of patterns and based on the patterns, Spring will do the Security for us. **permitAll()** allows anybody to access the url while **hasAnyAuthority()** signifies that only admins can access the routes. **csrf()** stands for cross site reference support, which we will disable.
+
+```java
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+
+	@Override
+	public void configure(HttpSecurity http) throws Exception {
+		http.authorizeRequests()
+				.antMatchers("/showReg", "/", "/index.html", "/registerUser", "/login", "/showLogin", "/login/*", "/reservations/*")
+				.permitAll()
+				.antMatchers("/admin/*").hasAnyAuthority("ADMIN")
+				.anyRequest().authenticated()
+				.and().csrf().disable();
+	}
+}
+```
+
+#### Password Encoder Bean
+
+The BCryptPasswordEncoder bean is not automatically provided by Spring hence we need to provide it in the configuration as well
+
+```java
+@Configuration
+@EnableWebSecurity
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+	@Bean
+	public BCryptPasswordEncoder bCryptPasswordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+```
+
+## Transaction Management
+
+The process of executing a bunch of related operations while applying do all or nothing principle is called transaction. Every transaction has four key properties (ACID):
+
+1. Automicity - all or nothing
+2. Consistency - database should be left in a consistent state at the end of the transaction
+3. Isolation - each transaction should work in isolation
+4. Durability - once changes are committed, those changes should stay
+
+Service Layer classes should ideally be wrapped around a transaction. We can use the **@Transactional** annotation from Spring which will automatically create a transaction at runtime and whenever an exception is thrown in any tasks, the entire transaction will be rolled back.
+
+```java
+	@Override
+	@Transactional
+	public Reservation bookFlight(ReservationRequest request) {
+		LOGGER.info("inside bookFlight()");
+		// insert code for invoking payment gateway here
+
+		// get the flight
+		Long flightId = request.getFlightId();
+		LOGGER.info("fetching flight for flight id:" + flightId);
+		Flight flight = flightRepository.findById(flightId).get();
+
+		// create new passenger and save to database
+		Passenger passenger = new Passenger();
+		passenger.setFirstName(request.getPassengerFirstName());
+		passenger.setLastName(request.getPassengerLastName());
+		passenger.setPhone(request.getPassengerPhone());
+		passenger.setEmail(request.getPassengerEmail());
+		LOGGER.info("saving passenger: " + passenger);
+		Passenger savedPassenger = passengerRepository.save(passenger);
+
+		// create the reservation and save to database
+		Reservation reservation = new Reservation();
+		reservation.setFlight(flight);
+		reservation.setPassenger(savedPassenger);
+		reservation.setCheckedIn(false);
+		LOGGER.info("saving reservation: " + reservation);
+		Reservation savedReservation = reservationRepository.save(reservation);
+
+		// generate itinerary from the reservation
+		String filePath = ITINERARY_DIR + savedReservation.getId() + ".pdf";
+		LOGGER.info("generating itinerary");
+		pdfGenerator.generateItinerary(savedReservation,
+				filePath);
+
+		// send email
+//		emailUtil.sendItinerary(passenger.getEmail(), filePath);
+
+		return savedReservation;
+	}
 ```
