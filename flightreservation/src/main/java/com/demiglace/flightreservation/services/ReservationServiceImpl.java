@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.demiglace.flightreservation.controllers.ReservationController;
 import com.demiglace.flightreservation.dto.ReservationRequest;
@@ -41,6 +42,7 @@ public class ReservationServiceImpl implements ReservationService {
 //	EmailUtil emailUtil;
 
 	@Override
+	@Transactional
 	public Reservation bookFlight(ReservationRequest request) {
 		LOGGER.info("inside bookFlight()");
 		// insert code for invoking payment gateway here
