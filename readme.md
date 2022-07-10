@@ -51,6 +51,7 @@
       - [Creating Security Configuration](#creating-security-configuration)
       - [Password Encoder Bean](#password-encoder-bean)
   - [Transaction Management](#transaction-management)
+  - [Deployment](#deployment)
 
 ## Java Project Development Concepts
 
@@ -1584,4 +1585,25 @@ Service Layer classes should ideally be wrapped around a transaction. We can use
 
 		return savedReservation;
 	}
+```
+
+## Deployment
+
+There are two ways to deploy a Spring Boot application: JAR and WAR. By default, Spring Boot project's packaging is jar. It will already include all the configuration and jars for maven dependencies. To build our project into jar, we just need to run maven clean then maven install. The jar package contains the **BOOT-INF** directory which contains the class files, project configuration. The **lib** folder contains all the jars that our application depends on. We can run a jar using the command `java -jar flightreservation.jar`. In this case, the application will be launched internally with an embedded tomcat server.
+
+WAR is useful for Weblogic or Websphere servers. To deploy into a war, we need to change the packaging type into war in pom.xml. Afterwards, we need to provide additional configuration in our entry point (FlightreservationApplication). This class should now extend **SpringBootServletInitializer** then override the configure() method. Afterwards, we need to run maven install to bundle the application as a war file.
+
+```java
+@SpringBootApplication
+public class FlightreservationApplication extends SpringBootServletInitializer {
+
+	@Override
+	protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
+		return builder.sources(FlightreservationApplication.class);
+	}
+
+	public static void main(String[] args) {
+		SpringApplication.run(FlightreservationApplication.class, args);
+	}
+}
 ```
