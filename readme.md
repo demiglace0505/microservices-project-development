@@ -1611,4 +1611,123 @@ public class FlightreservationApplication extends SpringBootServletInitializer {
 
 ## Checkin Application with Angular
 
-We initialize the project using `ng new flightCheckIn`
+We initialize the project using `ng new flightCheckIn`. Afterwards, we create the components and service
+
+```bash
+ng g c components/checkin
+ng g c components/startcheckin
+ng g c components/confirm
+ng g s services/checkin
+```
+
+The checkin service will be responsible for making the backend calls for fetching the reservation and updating reservation data.
+
+```typescript
+export class CheckinService {
+  reservationUrl = "http://localhost:8080/flightreservation/reservations/";
+  reservationData: any;
+
+  constructor(private _httpClient: HttpClient) {}
+
+  public getReservation(id: number): any {
+    return this._httpClient.get(this.reservationUrl + id);
+  }
+
+  public checkIn(checkInRequest: any): any {
+    return this._httpClient.put(this.reservationUrl, checkInRequest);
+  }
+}
+```
+
+Afterwards, we can configure the routes in our app-routing module.
+
+```typescript
+const routes: Routes = [
+  { path: "", redirectTo: "", pathMatch: "full" },
+  { path: "startCheckIn", component: StartcheckinComponent },
+  { path: "checkIn", component: CheckinComponent },
+  { path: "confirm", component: ConfirmComponent },
+];
+
+@NgModule({
+  imports: [RouterModule.forRoot(routes)],
+  exports: [RouterModule],
+})
+export class AppRoutingModule {}
+```
+
+We then start writing the components. In the Startcheckin component, we inject the service we created and the router. In the onClick method, we send the response object into the next component.
+
+```html
+<h1>Enter the reservation id</h1>
+<input type="text" [(ngModel)]="reservationId" /><br />
+<button (click)="onClick()">Next</button>
+```
+
+```typescript
+export class StartcheckinComponent implements OnInit {
+  reservationId!: Number;
+
+  constructor(private service: CheckinService, private router: Router) {}
+
+  ngOnInit(): void {}
+
+  public onClick() {
+    this.service.getReservation(this.reservationId).subscribe((res: any) => {
+      this.service.reservationData = res;
+      this.router.navigate(["checkIn"]);
+    });
+  }
+}
+```
+
+Afterwards, we can implement the checkin page and component. Upon init, we need to assign the data by calling the service. In the checkIn method, we construct the request object
+
+```html
+<h1>Review Details</h1>
+<h2>Flight Details:</h2>
+Airlines: {{ data?.flight?.operatingAirlines }}<br />
+Flight No: {{ data?.flight?.flightNumber }}<br />
+Departure City: {{ data?.flight?.departureCity }}<br />
+Arrival City: {{ data?.flight?.arrivalCity }}<br />
+Date Of Departure: {{ data?.flight?.dateOfDeparture }}<br />
+Estimated Departure Time: {{ data?.flight?.estimatedDepartureTime }}<br />
+<h2>Passenger Details:</h2>
+
+First Name: {{ data?.passenger?.firstName }}<br />
+Last Name: {{ data?.passenger?.lastName }}<br />
+Email : {{ data?.passenger?.email }}<br />
+Phone: {{ data?.passenger?.phone }}<br />
+Enter the number of bags to check in:<input
+  type="text"
+  [(ngModel)]="noOfbags"
+/>
+<button (click)="checkIn()">CheckIn</button>
+```
+
+```typescript
+export class CheckinComponent implements OnInit {
+  noOfbags!: Number;
+  data: any;
+
+  constructor(private service: CheckinService, private router: Router) {}
+
+  ngOnInit(): void {
+    this.data = this.service.reservationData;
+  }
+
+  public checkIn() {
+    let request = {
+      id: this.data.id,
+      checkIn: true,
+      noOfBags: this.noOfbags,
+    };
+
+    this.service.checkIn(request).subscribe((res: any) => {
+      this.router.navigate(["/confirm"]);
+    });
+  }
+}
+```
+
+The data is fetched from the backend from the Startcheckin component. It puts the data into the service then navigates to the checkin component, which initializes the data from the service into the _data_ field that is then rendered to the template. Once the number of bags is entered in the template, a backend _put_ call will be made by the service.

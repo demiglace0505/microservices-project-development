@@ -6,19 +6,19 @@ import { AppComponent } from './app.component';
 import { StartcheckinComponent } from './components/startcheckin/startcheckin.component';
 import { CheckinComponent } from './components/checkin/checkin.component';
 import { ConfirmComponent } from './components/confirm/confirm.component';
+import { FormsModule } from '@angular/forms';
+import { HttpClientModule } from '@angular/common/http';
+import { CheckinService } from './services/checkin.service';
 
 @NgModule({
   declarations: [
     AppComponent,
     StartcheckinComponent,
     CheckinComponent,
-    ConfirmComponent
+    ConfirmComponent,
   ],
-  imports: [
-    BrowserModule,
-    AppRoutingModule
-  ],
-  providers: [],
-  bootstrap: [AppComponent]
+  imports: [BrowserModule, AppRoutingModule, FormsModule, HttpClientModule],
+  providers: [CheckinService],
+  bootstrap: [AppComponent],
 })
-export class AppModule { }
+export class AppModule {}
