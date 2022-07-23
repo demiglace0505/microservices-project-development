@@ -52,6 +52,7 @@
       - [Password Encoder Bean](#password-encoder-bean)
   - [Transaction Management](#transaction-management)
   - [Deployment](#deployment)
+  - [Checkin Application with Angular](#checkin-application-with-angular)
 
 ## Java Project Development Concepts
 
@@ -1607,3 +1608,7 @@ public class FlightreservationApplication extends SpringBootServletInitializer {
 	}
 }
 ```
+
+## Checkin Application with Angular
+
+We initialize the project using `ng new flightCheckIn`
